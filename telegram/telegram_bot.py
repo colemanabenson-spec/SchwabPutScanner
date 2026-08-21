@@ -111,63 +111,30 @@ Technical Score: {result['Technical Score']:.1f}
 ━━━━━━━━━━━━━━━━━━
 QUALITY
 ━━━━━━━━━━━━━━━━━━
-
-ROE
-{status(result['ROE Score'])}
-{percent(result['ROE'])}
-
-Operating Margin
-{status(result['Operating Margin Score'])}
-{percent(result['Operating Margin'])}
+ROE {status(result['ROE Score'])} {percent(result['ROE'])}
+Operating Margin {status(result['Operating Margin Score'])} {percent(result['Operating Margin'])}
 
 ━━━━━━━━━━━━━━━━━━
 GROWTH
 ━━━━━━━━━━━━━━━━━━
-
-Revenue Growth
-{status(result['Revenue Growth Score'])}
-{percent(result['Revenue Growth'])}
-
-Revenue CAGR
-{status(result['Revenue CAGR Score'])}
-{percent(result['Revenue CAGR'])}
-
-EPS Growth
-{status(result['EPS Growth Score'])}
-{percent(result['EPS Growth'])}
-
-EPS CAGR
-{status(result['EPS CAGR Score'])}
-{percent(result['EPS CAGR'])}
+Revenue Growth {status(result['Revenue Growth Score'])} {percent(result['Revenue Growth'])}
+Revenue CAGR {status(result['Revenue CAGR Score'])} {percent(result['Revenue CAGR'])}
+EPS Growth {status(result['EPS Growth Score'])} {percent(result['EPS Growth'])}
+EPS CAGR {status(result['EPS CAGR Score'])} {percent(result['EPS CAGR'])}
 
 ━━━━━━━━━━━━━━━━━━
 VALUATION
 ━━━━━━━━━━━━━━━━━━
-
-Price
-{price}
-
-PE Ratio
-{status(result['PE Score'])}
-{number(result['PE'], 1)}
-
-PEG Ratio
-{status(result['PEG Score'])}
-{number(result['PEG'], 2)}
-
-FCF Yield
-{status(result['FCF Score'])}
-{fcf_yield}
+Price {price}
+PE Ratio {status(result['PE Score'])} {number(result['PE'], 1)}
+PEG Ratio {status(result['PEG Score'])} {number(result['PEG'], 2)}
+FCF Yield {status(result['FCF Score'])} {fcf_yield}
 
 ━━━━━━━━━━━━━━━━━━
 TECHNICALS
 ━━━━━━━━━━━━━━━━━━
-
-Above 200 DMA
-{'✅' if result['200 DMA Score'] else '❌'}
-
-200 DMA
-{dma}
+Above 200 DMA {'✅' if result['200 DMA Score'] else '❌'}
+200 DMA {dma}
 """
 
         await update.message.reply_text(
