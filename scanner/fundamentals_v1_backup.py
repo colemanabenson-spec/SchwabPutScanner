@@ -14,20 +14,8 @@ def score_metric(value, high, medium):
 
 def analyze_stock(ticker):
 
-    fcf_yield = None
-    
     stock = yf.Ticker(ticker)
     info = stock.info
-    hist = stock.history(period="1y")
-    sma200 = None
-
-    if len(hist) >= 200:
-        sma200 = (
-            hist["Close"]
-            .rolling(window=200)
-            .mean()
-            .iloc[-1]
-        )
 
     price = info.get("currentPrice")
     pe = info.get("trailingPE")
@@ -37,94 +25,13 @@ def analyze_stock(ticker):
     current_ratio = info.get("currentRatio")
     free_cash_flow = info.get("freeCashflow")
     revenue_growth = info.get("revenueGrowth")
-    company_name = (
-        info.get("longName")
-        or info.get("shortName")
-        or ticker
-    )
+    company_name = info.get("longName")
     sector = info.get("sector")
     industry = info.get("industry")
     description = info.get("longBusinessSummary")
     roe = info.get("returnOnEquity")
     operating_margin = info.get("operatingMargins")
     eps_growth = info.get("earningsGrowth")
-    earnings_date = info.get("earningsTimestamp")
-    earnings_date = None
-
-    try:
-
-        calendar = stock.calendar
-
-        if "Earnings Date" in calendar:
-
-            earnings = calendar["Earnings Date"]
-
-            if isinstance(earnings, list):
-                earnings_date = str(earnings[0])
-            else:
-                earnings_date = str(earnings)
-
-    except Exception:
-        pass
-
-    revenue_cagr = None
-
-    try:
-
-        financials = stock.financials
-
-        revenue_series = (
-            financials.loc["Total Revenue"]
-            .dropna()
-        )
-
-        if len(revenue_series) >= 2:
-            current_revenue = revenue_series.iloc[0]
-            old_revenue = revenue_series.iloc[-1]
-            years = len(revenue_series) - 1
-
-            if old_revenue > 0:
-
-                revenue_cagr = (
-                    (
-                        current_revenue
-                        / old_revenue
-                    ) ** (1 / years)
-                    - 1
-                ) * 100
-
-    except Exception:
-        pass
-
-    eps_cagr = None
-
-    try:
-
-        earnings_series = (
-            financials.loc["Diluted EPS"]
-            .dropna()
-        )
-
-        if len(earnings_series) >= 2:
-
-            current_eps = earnings_series.iloc[0]
-
-            old_eps = earnings_series.iloc[-1]
-
-            years = len(earnings_series) - 1
-
-            if old_eps > 0:
-
-                eps_cagr = (
-                    (
-                        current_eps
-                        / old_eps
-                    ) ** (1 / years)
-                    - 1
-                ) * 100
-
-    except Exception:
-        pass
 
     if roe is not None:
         roe *= 100
@@ -156,31 +63,11 @@ def analyze_stock(ticker):
         5
     )
 
-    revenue_cagr_score = score_metric(
-        revenue_cagr,
-        12,
-        5
-    )
-
-    eps_cagr_score = score_metric(
-        eps_cagr,
-        12,
-        5
-    )
-
     eps_growth_score = score_metric(
         eps_growth,
         15,
         5
     )
-
-    dma_score = 0
-
-    if (
-        price is not None
-        and sma200 is not None
-    ):
-        dma_score = 1 if price > sma200 else 0
 
     if pe is None:
         pe_score = 0
@@ -200,19 +87,49 @@ def analyze_stock(ticker):
     else:
         peg_score = 0
 
-    technical_score = dma_score
-
     # Calculate FCF Yield
     fcf_yield = None
 
     if market_cap and free_cash_flow:
         fcf_yield = free_cash_flow / market_cap
 
-    fcf_score = score_metric(
-        fcf_yield * 100 if fcf_yield is not None else None,
-        5,
-        2
+    # Individual Rule Checks
+    market_cap_pass = (
+        market_cap is not None
+        and market_cap > 2_000_000_000
     )
+
+    price_pass = (
+        price is not None
+        and price < 150
+    )
+
+    pe_pass = (
+        pe is not None
+        and pe < 25
+    )
+
+    fcf_pass = (
+        fcf_yield is not None
+        and fcf_yield > 0.04
+    )
+
+    current_ratio_pass = (
+        current_ratio is not None
+        and current_ratio > 0.75
+    )
+
+    # Assuming Yahoo Finance reports Debt/Equity as a percentage
+    debt_to_equity_pass = (
+        debt_to_equity is not None
+        and debt_to_equity < 150
+    )
+
+    revenue_growth_pass = (
+        revenue_growth is not None
+        and revenue_growth > -0.05
+    )
+
     quality_score = (
         roe_score
         + operating_margin_score
@@ -220,22 +137,53 @@ def analyze_stock(ticker):
 
     growth_score = (
         revenue_growth_score
-        + revenue_cagr_score
         + eps_growth_score
-        + eps_cagr_score
     )
 
     valuation_score = (
         pe_score
         + peg_score
-        + fcf_score
     )
 
     total_score = (
         quality_score
         + growth_score
         + valuation_score
-        + technical_score
+    )
+
+    # Fundamental Score
+    score = 0
+
+    if market_cap_pass:
+        score += 1
+
+    if price_pass:
+        score += 1
+
+    if pe_pass:
+        score += 1
+
+    if fcf_pass:
+        score += 1
+
+    if current_ratio_pass:
+        score += 1
+
+    if debt_to_equity_pass:
+        score += 1
+
+    if revenue_growth_pass:
+        score += 1
+
+    # Overall Pass/Fail
+    passes = (
+        market_cap_pass
+        and price_pass
+        and pe_pass
+        and fcf_pass
+        and current_ratio_pass
+        and debt_to_equity_pass
+        and revenue_growth_pass
     )
 
     return {
@@ -244,12 +192,22 @@ def analyze_stock(ticker):
         "PE": pe,
         "PEG": peg,
         "FCF Yield": fcf_yield,
-        "FCF Score": fcf_score,
         "Current Ratio": current_ratio,
         "Market Cap": market_cap,
         "Debt/Equity": debt_to_equity,
         "Free Cash Flow": free_cash_flow,
         "Revenue Growth": revenue_growth,
+
+        "Market Cap Pass": market_cap_pass,
+        "Price Pass": price_pass,
+        "PE Pass": pe_pass,
+        "FCF Pass": fcf_pass,
+        "Current Ratio Pass": current_ratio_pass,
+        "Debt/Equity Pass": debt_to_equity_pass,
+        "Revenue Growth Pass": revenue_growth_pass,
+
+        "Fundamental Score": score,
+        "Passes Fundamentals": passes,
 
         "Company Name": company_name,
         "Sector": sector,
@@ -262,8 +220,6 @@ def analyze_stock(ticker):
         "EPS Growth": eps_growth,
         "EPS Growth Score": eps_growth_score,
         "Revenue Growth Score": revenue_growth_score,
-        "Revenue CAGR": revenue_cagr,
-        "Revenue CAGR Score": revenue_cagr_score,
 
         "Quality Score": quality_score,
         "Growth Score": growth_score,
@@ -272,12 +228,4 @@ def analyze_stock(ticker):
         "PE Score": pe_score,
         "PEG Score": peg_score,
         "Valuation Score": valuation_score,
-
-        "200 DMA": sma200,
-        "200 DMA Score": dma_score,
-        "Technical Score": technical_score,
-        "Earnings Date": earnings_date,
-
-        "EPS CAGR": eps_cagr,
-        "EPS CAGR Score": eps_cagr_score,
     }
