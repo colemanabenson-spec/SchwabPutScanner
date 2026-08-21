@@ -137,17 +137,17 @@ Growth Score: {result['Growth Score']:.1f}
 
 VALUATION
 ----------------------------------------
-Price ${result['Price']:.2f if result['Price'] is not None else 0}
+Price {price}
 PE Ratio {status(result['PE Score'])} {number(result['PE'], 1)}
 PEG Ratio {status(result['PEG Score'])} {number(result['PEG'], 2)}
-FCF Yield {status(result['FCF Score'])} {f'{result["FCF Yield"] * 100:.2f}%' if result['FCF Yield'] is not None else 'N/A'}
+FCF Yield {status(result['FCF Score'])} {fcf_yield}
 
 Valuation Score: {result['Valuation Score']:.1f}
 
 TECHNICALS
 ----------------------------------------
 Above 200 DMA {'✅' if result['200 DMA Score'] else '❌'}
-200 DMA: {f'${result["200 DMA"]:.2f}' if result['200 DMA'] is not None else 'N/A'}
+200 DMA: {dma}
 
 Technical Score: {result['Technical Score']:.1f}
 """
