@@ -88,53 +88,68 @@ async def handle_message(
         )
 
         reply = f"""
-📊 {result['Company Name']} ({ticker})
+================================================================================
+{result['Company Name']} ({ticker})
+================================================================================
 
 Sector: {result['Sector']}
 Industry: {result['Industry']}
 
-━━━━━━━━━━━━━━━━━━
 SUMMARY
-━━━━━━━━━━━━━━━━━━
-
+----------------------------------------
 Quality Score: {result['Quality Score']:.1f}
 Growth Score: {result['Growth Score']:.1f}
 Valuation Score: {result['Valuation Score']:.1f}
 Technical Score: {result['Technical Score']:.1f}
 
-🏆 TOTAL SCORE:
-{result['Total Score']:.1f} / 10.0
+TOTAL SCORE: {result['Total Score']:.1f} / 10.0
 
-📅 Next Earnings:
-{earnings}
+NEXT EARNINGS
+----------------------------------------
+{result['Earnings Date'] if result['Earnings Date'] else 'N/A'}
 
-━━━━━━━━━━━━━━━━━━
+VERDICT
+----------------------------------------
+{'✅ High Quality' if result['Quality Score'] >= 1.5 else '⚠️ Below Target Quality'}
+{'✅ Strong Growth' if result['Growth Score'] >= 2 else ''}
+{'✅ Attractive Valuation' if result['Valuation Score'] >= 2 else '⚠️ Expensive'}
+{'✅ Positive Trend' if result['Technical Score'] >= 1 else '❌ Below 200 Day Moving Average'}
+
+COMPANY PROFILE
+----------------------------------------
+{result['Description'][:300] + '...' if result['Description'] else 'N/A'}
+
 QUALITY
-━━━━━━━━━━━━━━━━━━
+----------------------------------------
 ROE {status(result['ROE Score'])} {percent(result['ROE'])}
 Operating Margin {status(result['Operating Margin Score'])} {percent(result['Operating Margin'])}
 
-━━━━━━━━━━━━━━━━━━
+Quality Score: {result['Quality Score']:.1f}
+
 GROWTH
-━━━━━━━━━━━━━━━━━━
+----------------------------------------
 Revenue Growth {status(result['Revenue Growth Score'])} {percent(result['Revenue Growth'])}
 Revenue CAGR {status(result['Revenue CAGR Score'])} {percent(result['Revenue CAGR'])}
 EPS Growth {status(result['EPS Growth Score'])} {percent(result['EPS Growth'])}
 EPS CAGR {status(result['EPS CAGR Score'])} {percent(result['EPS CAGR'])}
 
-━━━━━━━━━━━━━━━━━━
+Growth Score: {result['Growth Score']:.1f}
+
 VALUATION
-━━━━━━━━━━━━━━━━━━
-Price {price}
+----------------------------------------
+Price ${result['Price']:.2f if result['Price'] is not None else 0}
 PE Ratio {status(result['PE Score'])} {number(result['PE'], 1)}
 PEG Ratio {status(result['PEG Score'])} {number(result['PEG'], 2)}
-FCF Yield {status(result['FCF Score'])} {fcf_yield}
+FCF Yield {status(result['FCF Score'])} {f'{result["FCF Yield"] * 100:.2f}%' if result['FCF Yield'] is not None else 'N/A'}
 
-━━━━━━━━━━━━━━━━━━
+Valuation Score: {result['Valuation Score']:.1f}
+
 TECHNICALS
-━━━━━━━━━━━━━━━━━━
+----------------------------------------
 Above 200 DMA {'✅' if result['200 DMA Score'] else '❌'}
-200 DMA {dma}
+200 DMA: {f'${result["200 DMA"]:.2f}' if result['200 DMA'] is not None else 'N/A'}
+
+Technical Score: {result['Technical Score']:.1f}
 """
 
         await update.message.reply_text(
