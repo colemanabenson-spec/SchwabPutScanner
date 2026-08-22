@@ -2,29 +2,22 @@ from scanner.fundamentals import analyze_stock
 
 
 def status(score):
-
     if score >= 1:
         return "✅"
-
-    elif score >= 0.5:
+    if score >= 0.5:
         return "⚠️"
-
     return "❌"
 
 
-def format_percent(value):
-
+def percent(value):
     if value is None:
         return "N/A"
-
     return f"{value:.1f}%"
 
 
-def format_number(value, decimals=2):
-
+def number(value, decimals=2):
     if value is None:
         return "N/A"
-
     return f"{value:.{decimals}f}"
 
 
@@ -36,222 +29,124 @@ stocks = [
     "AMD",
     "DVN",
     "PFE",
-    "C"
+    "C",
 ]
 
 
 for ticker in stocks:
+    try:
+        result = analyze_stock(ticker)
 
-    result = analyze_stock(ticker)
-
-    print()
-    print("=" * 80)
-    print(f"{result['Company Name']} ({ticker})")
-    print("=" * 80)
-
-    print()
-    print(f"Sector: {result['Sector']}")
-    print(f"Industry: {result['Industry']}")
-
-    print()
-
-    print("SUMMARY")
-    print("-" * 40)
-
-    print(
-        f"Quality Score: "
-        f"{result['Quality Score']:.1f}"
-    )
-
-    print(
-        f"Growth Score: "
-        f"{result['Growth Score']:.1f}"
-    )
-
-    print(
-        f"Valuation Score: "
-        f"{result['Valuation Score']:.1f}"
-    )
-
-    print(
-        f"Technical Score: "
-        f"{result['Technical Score']:.1f}"
-    )
-
-    print()
-
-    print(
-        f"TOTAL SCORE: "
-        f"{result['Total Score']:.1f} / 10.0"
-    )
-
-    print()
-
-    print("NEXT EARNINGS")
-    print("-" * 40)
-
-    if result.get("Earnings Date"):
-        print(result["Earnings Date"])
-    else:
-        print("N/A")
-
-    print()
-
-    print("VERDICT")
-    print("-" * 40)
-
-    if result["Quality Score"] >= 1.5:
-        print("✅ High Quality")
-    else:
-        print("⚠️ Below Target Quality")
-
-    if result["Growth Score"] >= 2:
-        print("✅ Strong Growth")
-
-    if result["Valuation Score"] >= 2:
-        print("✅ Attractive Valuation")
-    else:
-        print("⚠️ Expensive")
-
-    if result["Technical Score"] >= 1:
-        print("✅ Positive Trend")
-    else:
-        print("❌ Below 200 Day Moving Average")
-
-    print()
-
-    print("COMPANY PROFILE")
-    print("-" * 40)
-
-    if result["Description"]:
-        print(result["Description"][:300] + "...")
-    else:
-        print("N/A")
-
-    print()
-
-    print("QUALITY")
-    print("-" * 40)
-
-    print(
-        f"ROE "
-        f"{status(result['ROE Score'])} "
-        f"{format_percent(result['ROE'])}"
-    )
-
-    print(
-        f"Operating Margin "
-        f"{status(result['Operating Margin Score'])} "
-        f"{format_percent(result['Operating Margin'])}"
-    )
-
-    print()
-
-    print(
-        f"Quality Score: "
-        f"{result['Quality Score']:.1f}"
-    )
-
-    print()
-
-    print("GROWTH")
-    print("-" * 40)
-
-    print(
-        f"Revenue Growth "
-        f"{status(result['Revenue Growth Score'])} "
-        f"{format_percent(result['Revenue Growth'])}"
-    )
-
-    print(
-        f"Revenue CAGR "
-        f"{status(result['Revenue CAGR Score'])} "
-        f"{format_percent(result['Revenue CAGR'])}"
-    )
-
-    print(
-        f"EPS Growth "
-        f"{status(result['EPS Growth Score'])} "
-        f"{format_percent(result['EPS Growth'])}"
-    )
-
-    print(
-        f"EPS CAGR "
-        f"{status(result['EPS CAGR Score'])} "
-        f"{format_percent(result['EPS CAGR'])}"
-    )
-
-    print()
-
-    print(
-        f"Growth Score: "
-        f"{result['Growth Score']:.1f}"
-    )
-
-    print()
-
-    print("VALUATION")
-    print("-" * 40)
-
-    if result["Price"] is not None:
-        print(f"Price ${result['Price']:.2f}")
-    else:
-        print("Price N/A")
-
-    print(
-        f"PE Ratio "
-        f"{status(result['PE Score'])} "
-        f"{format_number(result['PE'], 1)}"
-    )
-
-    print(
-        f"PEG Ratio "
-        f"{status(result['PEG Score'])} "
-        f"{format_number(result['PEG'], 2)}"
-    )
-
-    fcf_text = (
-        f"{result['FCF Yield'] * 100:.2f}%"
-        if result["FCF Yield"] is not None
-        else "N/A"
-    )
-
-    print(
-        f"FCF Yield "
-        f"{status(result['FCF Score'])} "
-        f"{fcf_text}"
-    )
-
-    print()
-
-    print(
-        f"Valuation Score: "
-        f"{result['Valuation Score']:.1f}"
-    )
-
-    print()
-
-    print("TECHNICALS")
-    print("-" * 40)
-
-    print(
-        f"Above 200 DMA "
-        f"{'✅' if result['200 DMA Score'] else '❌'}"
-    )
-
-    if result["200 DMA"] is not None:
-        print(
-            f"200 DMA: "
-            f"${result['200 DMA']:.2f}"
+        warnings = result.get("Data Warnings", [])
+        warning_text = (
+            "\n⚠️ DATA NOT FOUND\n"
+            + "\n".join(f"• {warning}" for warning in warnings)
+            if warnings
+            else "\n✅ Data loaded successfully"
         )
-    else:
-        print("200 DMA: N/A")
 
-    print()
+        price = (
+            f"${result['Price']:.2f}"
+            if result["Price"] is not None
+            else "N/A"
+        )
 
-    print(
-        f"Technical Score: "
-        f"{result['Technical Score']:.1f}"
-    )
+        fcf_yield = (
+            f"{result['FCF Yield'] * 100:.2f}%"
+            if result["FCF Yield"] is not None
+            else "N/A"
+        )
 
-    print()
+        dma = (
+            f"${result['200 DMA']:.2f}"
+            if result["200 DMA"] is not None
+            else "N/A"
+        )
+
+        description = result["Description"] or "N/A"
+        description = (
+            description[:300] + "..."
+            if len(description) > 300
+            else description
+        )
+
+        roic_line = (
+            f"ROIC {status(result['ROIC Score'])} "
+            f"{percent(result['ROIC'])}\n"
+            if result["ROIC"] is not None
+            else ""
+        )
+
+        print(
+            f"""
+==============================
+{result['Company Name']} ({ticker})
+==============================
+
+{warning_text}
+
+Sector: {result['Sector'] or 'N/A'}
+Industry: {result['Industry'] or 'N/A'}
+
+SUMMARY
+----------------------------------------
+Quality Score: {result['Quality Score']:.1f}
+Growth Score: {result['Growth Score']:.1f}
+Valuation Score: {result['Valuation Score']:.1f}
+Technical Score: {result['Technical Score']:.1f}
+
+TOTAL SCORE: {result['Total Score']:.1f} / 13.0
+
+NEXT EARNINGS
+----------------------------------------
+{result['Earnings Date'] or 'N/A'}
+
+VERDICT
+----------------------------------------
+{'✅ High Quality' if result['Quality Score'] >= 1.5 else '⚠️ Below Target Quality'}
+{'✅ Strong Growth' if result['Growth Score'] >= 2 else ''}
+{'✅ Attractive Valuation' if result['Valuation Score'] >= 2 else '⚠️ Expensive'}
+{'✅ Positive Trend' if result['Technical Score'] >= 1 else '❌ Below 200 Day Moving Average'}
+
+COMPANY PROFILE
+----------------------------------------
+{description}
+
+QUALITY
+----------------------------------------
+ROE {status(result['ROE Score'])} {percent(result['ROE'])}
+{roic_line}Operating Margin {status(result['Operating Margin Score'])} {percent(result['Operating Margin'])}
+
+Quality Score: {result['Quality Score']:.1f}
+
+GROWTH
+----------------------------------------
+Revenue Growth {status(result['Revenue Growth Score'])} {percent(result['Revenue Growth'])}
+Revenue CAGR {status(result['Revenue CAGR Score'])} {percent(result['Revenue CAGR'])}
+EPS Growth {status(result['EPS Growth Score'])} {percent(result['EPS Growth'])}
+EPS CAGR {status(result['EPS CAGR Score'])} {percent(result['EPS CAGR'])}
+
+Growth Score: {result['Growth Score']:.1f}
+
+VALUATION
+----------------------------------------
+Price {price}
+PE Ratio {status(result['PE Score'])} {number(result['PE'], 1)}
+PEG Ratio {status(result['PEG Score'])} {number(result['PEG'], 2)}
+FCF Yield {status(result['FCF Score'])} {fcf_yield}
+
+Valuation Score: {result['Valuation Score']:.1f}
+
+TECHNICALS
+----------------------------------------
+Above 200 DMA {'✅' if result['200 DMA Score'] else '❌'}
+200 DMA: {dma}
+RSI {status(result['RSI Score'])} {number(result['RSI'], 1)}
+Relative Strength {status(result['Relative Strength Score'])} {percent(result['Relative Strength'])}
+
+Technical Score: {result['Technical Score']:.1f}
+"""
+        )
+
+    except Exception as error:
+        print(f"Error analyzing ticker '{ticker}': {error}")

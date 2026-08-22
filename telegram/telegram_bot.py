@@ -87,10 +87,28 @@ async def handle_message(
             else "N/A"
         )
 
+        warnings = result.get("Data Warnings", [])
+
+        warning_text = (
+            "\n⚠️ DATA NOT FOUND\n"
+            + "\n".join(f"• {warning}" for warning in warnings)
+            if warnings
+            else "\n✅ Data loaded successfully"
+        )
+
+        roic_line = (
+            f"ROIC {status(result['ROIC Score'])} "
+            f"{percent(result['ROIC'])}\n"
+            if result["ROIC"] is not None
+            else ""
+        )
+
         reply = f"""
 ==============================
 {result['Company Name']} ({ticker})
 ==============================
+
+{warning_text}
 
 Sector: {result['Sector']}
 Industry: {result['Industry']}
@@ -102,7 +120,7 @@ Growth Score: {result['Growth Score']:.1f}
 Valuation Score: {result['Valuation Score']:.1f}
 Technical Score: {result['Technical Score']:.1f}
 
-TOTAL SCORE: {result['Total Score']:.1f} / 10.0
+TOTAL SCORE: {result['Total Score']:.1f} / 13.0
 
 NEXT EARNINGS
 ----------------------------------------
@@ -110,8 +128,8 @@ NEXT EARNINGS
 
 VERDICT
 ----------------------------------------
-{'✅ High Quality' if result['Quality Score'] >= 1.5 else '⚠️ Below Target Quality'}
-{'✅ Strong Growth' if result['Growth Score'] >= 2 else ''}
+{'✅ High Quality' if result['Quality Score'] >= 2 else '⚠️ Below Target Quality'}
+{'✅ Strong Growth' if result['Growth Score'] >= 2.5 else ''}
 {'✅ Attractive Valuation' if result['Valuation Score'] >= 2 else '⚠️ Expensive'}
 {'✅ Positive Trend' if result['Technical Score'] >= 1 else '❌ Below 200 Day Moving Average'}
 
@@ -122,7 +140,7 @@ COMPANY PROFILE
 QUALITY
 ----------------------------------------
 ROE {status(result['ROE Score'])} {percent(result['ROE'])}
-Operating Margin {status(result['Operating Margin Score'])} {percent(result['Operating Margin'])}
+{roic_line}Operating Margin {status(result['Operating Margin Score'])} {percent(result['Operating Margin'])}
 
 Quality Score: {result['Quality Score']:.1f}
 
@@ -148,8 +166,11 @@ TECHNICALS
 ----------------------------------------
 Above 200 DMA {'✅' if result['200 DMA Score'] else '❌'}
 200 DMA: {dma}
+RSI {status(result['RSI Score'])} {number(result['RSI'], 1)}
+Relative Strength {status(result['Relative Strength Score'])} {percent(result['Relative Strength'])}
 
 Technical Score: {result['Technical Score']:.1f}
+
 """
 
         await update.message.reply_text(
