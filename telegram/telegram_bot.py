@@ -137,6 +137,7 @@ VALUATION
 ----------------------------------------
 Price {price}
 PE Ratio {status(result['PE Score'])} {number(result['PE'], 1)}
+Forward PE {number(result['Forward PE'], 1)}
 PEG Ratio {status(result['PEG Score'])} {number(result['PEG'], 2)}
 FCF Yield {status(result['FCF Score'])} {fcf_yield}
 

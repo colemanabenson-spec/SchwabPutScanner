@@ -92,6 +92,7 @@ def analyze_stock(ticker):
 
     price = info.get("currentPrice")
     pe = info.get("trailingPE")
+    forward_pe = info.get("forwardPE")
     eps_ttm = info.get("trailingEps")
 
     if (
@@ -403,6 +404,7 @@ def analyze_stock(ticker):
     fields = {
         "Price": price,
         "PE": pe,
+        "Forward PE": forward_pe,
         "PEG": peg,
         "ROE": roe,
         "Operating Margin": operating_margin,
@@ -430,6 +432,7 @@ def analyze_stock(ticker):
         "Ticker": ticker,
         "Price": price,
         "PE": pe,
+        "Forward PE": forward_pe,
         "PEG": peg,
         "ROIC": roic,
         "ROIC Score": roic_score,
