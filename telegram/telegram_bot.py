@@ -113,26 +113,6 @@ async def handle_message(
 Sector: {result['Sector']}
 Industry: {result['Industry']}
 
-SUMMARY
-----------------------------------------
-Quality Score: {result['Quality Score']:.1f}
-Growth Score: {result['Growth Score']:.1f}
-Valuation Score: {result['Valuation Score']:.1f}
-Technical Score: {result['Technical Score']:.1f}
-
-TOTAL SCORE: {result['Total Score']:.1f} / 13.0
-
-NEXT EARNINGS
-----------------------------------------
-{result['Earnings Date'] if result['Earnings Date'] else 'N/A'}
-
-VERDICT
-----------------------------------------
-{'✅ High Quality' if result['Quality Score'] >= 2 else '⚠️ Below Target Quality'}
-{'✅ Strong Growth' if result['Growth Score'] >= 2.5 else ''}
-{'✅ Attractive Valuation' if result['Valuation Score'] >= 2 else '⚠️ Expensive'}
-{'✅ Positive Trend' if result['Technical Score'] >= 1 else '❌ Below 200 Day Moving Average'}
-
 COMPANY PROFILE
 ----------------------------------------
 {result['Description'][:300] + '...' if result['Description'] else 'N/A'}
@@ -170,6 +150,26 @@ RSI {status(result['RSI Score'])} {number(result['RSI'], 1)}
 Relative Strength {status(result['Relative Strength Score'])} {percent(result['Relative Strength'])}
 
 Technical Score: {result['Technical Score']:.1f}
+
+SUMMARY
+----------------------------------------
+Quality Score: {result['Quality Score']:.1f}
+Growth Score: {result['Growth Score']:.1f}
+Valuation Score: {result['Valuation Score']:.1f}
+Technical Score: {result['Technical Score']:.1f}
+
+TOTAL SCORE: {result['Total Score']:.1f} / 13.0
+
+NEXT EARNINGS
+----------------------------------------
+{result['Earnings Date'] if result['Earnings Date'] else 'N/A'}
+
+VERDICT
+----------------------------------------
+{'✅ High Quality' if result['Quality Score'] >= 2 else '⚠️ Below Target Quality'}
+{'✅ Strong Growth' if result['Growth Score'] >= 2.5 else ''}
+{'✅ Attractive Valuation' if result['Valuation Score'] >= 2 else '⚠️ Expensive'}
+{'✅ Positive Trend' if result['Technical Score'] >= 1 else '❌ Below 200 Day Moving Average'}
 
 """
 

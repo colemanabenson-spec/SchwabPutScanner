@@ -56,6 +56,22 @@ def analyze_stock(ticker):
 
     price = info.get("currentPrice")
     pe = info.get("trailingPE")
+    eps_ttm = info.get("trailingEps")
+
+    if (
+        not is_missing(price)
+        and not is_missing(eps_ttm)
+        and eps_ttm > 0
+    ):
+        calculated_pe = price / eps_ttm
+
+        if (
+            is_missing(pe)
+            or pe > calculated_pe * 3
+            or pe < calculated_pe / 3
+        ):
+            pe = calculated_pe
+
     peg = info.get("pegRatio")
     market_cap = info.get("marketCap")
     debt_to_equity = info.get("debtToEquity")
