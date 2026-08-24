@@ -25,6 +25,42 @@ def score_metric(value, high, medium):
     return 0
 
 
+def upcoming_earnings_date(stock, info):
+    now = datetime.now(timezone.utc)
+    candidates = []
+
+    earnings_timestamp = info.get("earningsTimestamp")
+    if earnings_timestamp:
+        try:
+            candidates.append(
+                datetime.fromtimestamp(
+                    earnings_timestamp,
+                    tz=timezone.utc
+                )
+            )
+        except (TypeError, ValueError, OSError):
+            pass
+
+    if not candidates or candidates[0] < now:
+        try:
+            earnings_dates = stock.get_earnings_dates(limit=12)
+            for earnings_date in earnings_dates.index:
+                if hasattr(earnings_date, "to_pydatetime"):
+                    earnings_date = earnings_date.to_pydatetime()
+
+                if earnings_date.tzinfo is None:
+                    earnings_date = earnings_date.replace(tzinfo=timezone.utc)
+                else:
+                    earnings_date = earnings_date.astimezone(timezone.utc)
+
+                candidates.append(earnings_date)
+        except (AttributeError, TypeError, ValueError, OSError):
+            pass
+
+    future_dates = [earnings_date for earnings_date in candidates if earnings_date >= now]
+    return min(future_dates) if future_dates else None
+
+
 def analyze_stock(ticker):
     warnings = []
     financials = None
@@ -67,8 +103,8 @@ def analyze_stock(ticker):
 
         if (
             is_missing(pe)
-            or pe > calculated_pe * 3
-            or pe < calculated_pe / 3
+            or pe > calculated_pe * 2
+            or pe < calculated_pe / 2
         ):
             pe = calculated_pe
 
@@ -89,16 +125,10 @@ def analyze_stock(ticker):
     roe = info.get("returnOnEquity")
     operating_margin = info.get("operatingMargins")
     eps_growth = info.get("earningsGrowth")
-    earnings_date = info.get("earningsTimestamp")
+    earnings_date = upcoming_earnings_date(stock, info)
 
     if earnings_date:
-        try:
-            earnings_date = datetime.fromtimestamp(
-                earnings_date,
-                tz=timezone.utc
-            ).strftime("%Y-%m-%d")
-        except (TypeError, ValueError, OSError):
-            warnings.append("Earnings date not found")
+        earnings_date = earnings_date.strftime("%Y-%m-%d")
     else:
         warnings.append("Earnings date not found")
 
@@ -311,7 +341,7 @@ def analyze_stock(ticker):
     ):
         dma_score = 1 if price > sma200 else 0
 
-    if pe is None:
+    if is_missing(pe):
         pe_score = 0
     elif pe < 20:
         pe_score = 1
