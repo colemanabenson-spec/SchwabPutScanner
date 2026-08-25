@@ -63,13 +63,6 @@ for ticker in stocks:
             else "N/A"
         )
 
-        description = result["Description"] or "N/A"
-        description = (
-            description[:300] + "..."
-            if len(description) > 300
-            else description
-        )
-
         roic_line = (
             f"ROIC {status(result['ROIC Score'])} "
             f"{percent(result['ROIC'])}\n"
@@ -110,12 +103,13 @@ VERDICT
 
 COMPANY PROFILE
 ----------------------------------------
-{description}
+{result['Description'][:300] + '...' if result['Description'] else 'N/A'}
 
 QUALITY
 ----------------------------------------
 ROE {status(result['ROE Score'])} {percent(result['ROE'])}
 {roic_line}Operating Margin {status(result['Operating Margin Score'])} {percent(result['Operating Margin'])}
+Debt/Equity {percent(result['Debt/Equity'])}
 
 Quality Score: {result['Quality Score']:.1f}
 
@@ -132,6 +126,7 @@ VALUATION
 ----------------------------------------
 Price {price}
 PE Ratio {status(result['PE Score'])} {number(result['PE'], 1)}
+Forward PE {number(result['Forward PE'], 1)}
 PEG Ratio {status(result['PEG Score'])} {number(result['PEG'], 2)}
 FCF Yield {status(result['FCF Score'])} {fcf_yield}
 
@@ -145,6 +140,26 @@ RSI {status(result['RSI Score'])} {number(result['RSI'], 1)}
 Relative Strength {status(result['Relative Strength Score'])} {percent(result['Relative Strength'])}
 
 Technical Score: {result['Technical Score']:.1f}
+
+SUMMARY
+----------------------------------------
+Quality Score: {result['Quality Score']:.1f}
+Growth Score: {result['Growth Score']:.1f}
+Valuation Score: {result['Valuation Score']:.1f}
+Technical Score: {result['Technical Score']:.1f}
+
+TOTAL SCORE: {result['Total Score']:.1f} / 13.0
+
+NEXT EARNINGS
+----------------------------------------
+{result['Earnings Date'] if result['Earnings Date'] else 'N/A'}
+
+VERDICT
+----------------------------------------
+{'✅ High Quality' if result['Quality Score'] >= 2 else '⚠️ Below Target Quality'}
+{'✅ Strong Growth' if result['Growth Score'] >= 2.5 else ''}
+{'✅ Attractive Valuation' if result['Valuation Score'] >= 2 else '⚠️ Expensive'}
+{'✅ Positive Trend' if result['Technical Score'] >= 1 else '❌ Below 200 Day Moving Average'}
 """
         )
 

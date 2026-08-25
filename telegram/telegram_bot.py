@@ -121,6 +121,7 @@ QUALITY
 ----------------------------------------
 ROE {status(result['ROE Score'])} {percent(result['ROE'])}
 {roic_line}Operating Margin {status(result['Operating Margin Score'])} {percent(result['Operating Margin'])}
+Debt/Equity {percent(result['Debt/Equity'])}
 
 Quality Score: {result['Quality Score']:.1f}
 
