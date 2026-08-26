@@ -97,9 +97,9 @@ Quality Score: {number(result['Quality Score'], 1)} (normalized {number(result['
 
 GROWTH
 ----------------------------------------
-Revenue Growth {status(result['Revenue Growth Score'])} {percent(result['Revenue Growth'])}
+Revenue Growth ({result['Revenue Growth Source'] or 'N/A'}) {status(result['Revenue Growth Score'])} {percent(result['Revenue Growth'])}
 Revenue CAGR {status(result['Revenue CAGR Score'])} {percent(result['Revenue CAGR'])}
-TTM EPS Growth {status(result['EPS Growth Score'])} {percent(result['TTM EPS Growth'])}
+EPS Growth ({result['EPS Growth Source'] or 'N/A'}) {status(result['EPS Growth Score'])} {percent(result.get('EPS Growth', result.get('TTM EPS Growth')))}
 Historical EPS CAGR {status(result['EPS CAGR Score'])} {percent(result['EPS CAGR'])}
 
 Growth Score: {number(result['Growth Score'], 1)} (normalized {number(result['Growth Normalized'], 2)}, {result['Growth Coverage']}/{result['Growth Components']} available)

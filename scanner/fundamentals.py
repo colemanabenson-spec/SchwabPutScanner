@@ -1,6 +1,7 @@
 import math
 from datetime import datetime, timezone
 import yfinance as yf
+import pandas as pd
 
 
 def is_missing(value):
@@ -92,80 +93,109 @@ def calculate_ttm_growth(series, min_denominator=0.10):
     return (current_ttm / prior_ttm - 1) * 100
 
 
-def calculate_ttm_eps_growth(quarterly_financials):
-    if quarterly_financials is None or quarterly_financials.empty:
+def calculate_annual_revenue_growth(series):
+    if series is None:
         return None
 
     try:
-        for row in (
-            "Diluted EPS",
-            "Diluted EPS from Continuing Operations",
-        ):
-            if row in quarterly_financials.index:
-                eps = (
-                    quarterly_financials.loc[row]
-                    .dropna()
-                    .sort_index(ascending=False)
-                )
-                if has_consecutive_quarters(eps, 8):
-                    current_ttm = eps.iloc[:4].sum()
-                    prior_ttm = eps.iloc[4:8].sum()
-                    if prior_ttm > 0:
-                        return (current_ttm / prior_ttm - 1) * 100
-
-        net_income = None
-        for row in (
-            "Net Income Common Stockholders",
-            "Net Income",
-        ):
-            if row in quarterly_financials.index:
-                net_income = (
-                    quarterly_financials.loc[row]
-                    .dropna()
-                    .sort_index(ascending=False)
-                )
-                break
-
-        diluted_shares = None
-        for row in (
-            "Diluted Average Shares",
-            "Diluted Average Shares Outstanding",
-        ):
-            if row in quarterly_financials.index:
-                diluted_shares = (
-                    quarterly_financials.loc[row]
-                    .dropna()
-                    .sort_index(ascending=False)
-                )
-                break
-
-        if net_income is None or diluted_shares is None:
+        series = series.dropna().sort_index(ascending=False)
+        if len(series) < 2:
             return None
 
-        common_dates = net_income.index.intersection(diluted_shares.index)
-        net_income = net_income.loc[common_dates].sort_index(ascending=False)
-        diluted_shares = diluted_shares.loc[common_dates].sort_index(ascending=False)
-
-        if not has_consecutive_quarters(net_income, 8):
-            return None
-        if not has_consecutive_quarters(diluted_shares, 8):
+        latest = series.iloc[0]
+        prior = series.iloc[1]
+        if prior <= 0:
             return None
 
-        quarterly_eps = net_income / diluted_shares
-        current_ttm = quarterly_eps.iloc[:4].sum()
-        prior_ttm = quarterly_eps.iloc[4:8].sum()
-        if prior_ttm > 0:
-            return (current_ttm / prior_ttm - 1) * 100
-    except (
-        AttributeError,
-        KeyError,
-        TypeError,
-        ValueError,
-        ZeroDivisionError,
-    ):
-        pass
+        return (latest / prior - 1) * 100
+    except (AttributeError, TypeError, ValueError, ZeroDivisionError):
+        return None
+
+
+def find_eps_row(frame):
+    if frame is None or frame.empty:
+        return None
+
+    for row in frame.index:
+        name = str(row).lower().strip()
+        if "diluted eps" in name:
+            return row
+
+    for row in frame.index:
+        name = str(row).lower().strip()
+        if "eps" in name:
+            return row
 
     return None
+
+
+def normalize_eps_series(series):
+    try:
+        s = pd.to_numeric(series, errors="coerce").dropna()
+
+        idx = pd.to_datetime(s.index, errors="coerce")
+        valid = ~idx.isna()
+        s = s[valid]
+        idx = idx[valid]
+
+        s.index = idx
+        s = s.sort_index(ascending=False)
+        return s
+    except Exception:
+        return pd.Series(dtype=float)
+
+
+def calculate_eps_growth(quarterly_financials, annual_financials):
+    """
+    EPS Growth:
+    1. Try TTM EPS growth using eight consecutive quarterly values when available.
+    2. If unavailable, try annual EPS growth.
+    3. Return (None, None) if neither can be calculated.
+    """
+    if quarterly_financials is not None and not quarterly_financials.empty:
+        try:
+            eps_row = find_eps_row(quarterly_financials)
+            if eps_row is not None:
+                eps = normalize_eps_series(quarterly_financials.loc[eps_row])
+
+                if len(eps) >= 8 and has_consecutive_quarters(eps, 8):
+                    current_ttm = eps.iloc[:4].sum()
+                    prior_ttm = eps.iloc[4:8].sum()
+
+                    if (
+                        pd.notna(current_ttm)
+                        and pd.notna(prior_ttm)
+                        and prior_ttm > 0
+                    ):
+                        return (current_ttm / prior_ttm - 1) * 100, "TTM"
+        except Exception:
+            pass
+
+    if annual_financials is not None and not annual_financials.empty:
+        try:
+            eps_row = find_eps_row(annual_financials)
+            if eps_row is not None:
+                eps = normalize_eps_series(annual_financials.loc[eps_row])
+
+                if len(eps) >= 2:
+                    latest = eps.iloc[0]
+                    prior = eps.iloc[1]
+
+                    if (
+                        pd.notna(latest)
+                        and pd.notna(prior)
+                        and prior > 0
+                    ):
+                        return (latest / prior - 1) * 100, "Annual"
+        except Exception:
+            pass
+
+    return None, None
+
+
+def calculate_ttm_eps_growth(quarterly_financials):
+    growth, _ = calculate_eps_growth(quarterly_financials, None)
+    return growth
 
 
 def calculate_cagr(series):
@@ -287,6 +317,7 @@ def analyze_stock(ticker):
     roe = info.get("returnOnEquity")
     operating_margin = info.get("operatingMargins")
     eps_growth = None
+    revenue_growth_source = None
 
     earnings_date = upcoming_earnings_date(stock, info)
 
@@ -376,8 +407,8 @@ def analyze_stock(ticker):
     eps_cagr_score = None
 
     try:
-        financials = stock.financials
-        quarterly_financials = stock.quarterly_financials
+        financials = stock.income_stmt
+        quarterly_financials = stock.quarterly_income_stmt
         balance_sheet = stock.balance_sheet
     except Exception as error:
         warnings.append(f"Financial statements not found: {error}")
@@ -419,26 +450,32 @@ def analyze_stock(ticker):
             revenue_series,
             min_denominator=0.10,
         )
-        if revenue_growth is None:
-            warnings.append("TTM Revenue Growth not meaningful or unavailable")
     except (AttributeError, KeyError, TypeError, ValueError):
-        warnings.append("TTM Revenue Growth not meaningful or unavailable")
+        revenue_growth = None
 
-    try:
-        eps_growth = calculate_ttm_eps_growth(quarterly_financials)
+    if revenue_growth is not None:
+        revenue_growth_source = "TTM"
 
-        if eps_growth is None:
-            earnings_history = stock.get_earnings_dates(limit=16)
-            if "Reported EPS" in earnings_history.columns:
-                eps_growth = calculate_ttm_growth(
-                    earnings_history["Reported EPS"],
-                    min_denominator=0,
-                )
+    if revenue_growth is None:
+        try:
+            revenue_growth = calculate_annual_revenue_growth(
+                financials.loc["Total Revenue"]
+            )
+        except (AttributeError, KeyError, TypeError, ValueError):
+            revenue_growth = None
 
-        if eps_growth is None:
-            warnings.append("TTM EPS Growth not meaningful or unavailable")
-    except (AttributeError, KeyError, TypeError, ValueError, ZeroDivisionError):
-        warnings.append("TTM EPS Growth not meaningful or unavailable")
+        if revenue_growth is not None:
+            revenue_growth_source = "Annual"
+
+    if revenue_growth is None:
+        warnings.append("Revenue Growth not available")
+
+    eps_growth, eps_growth_source = calculate_eps_growth(
+        quarterly_financials,
+        financials,
+    )
+    if eps_growth is None:
+        warnings.append("EPS Growth not available")
 
     revenue_growth_score = score_metric(
         revenue_growth,
@@ -519,20 +556,24 @@ def analyze_stock(ticker):
         warnings.append(f"Revenue CAGR not found: {error}")
 
     try:
-        eps_series = financials.loc["Diluted EPS"].dropna()
+        eps_row = find_eps_row(financials)
 
-        if len(eps_series) >= 2:
-            latest = eps_series.iloc[0]
-            oldest = eps_series.iloc[-1]
-            years = len(eps_series) - 1
+        if eps_row is not None:
+            eps_series = normalize_eps_series(financials.loc[eps_row])
 
-            if oldest > 0 and latest > 0:
-                eps_cagr = calculate_cagr(eps_series)
-                eps_cagr_score = score_metric(
-                    eps_cagr,
-                    10,
-                    5
-                )
+            if len(eps_series) >= 2:
+                latest = eps_series.iloc[0]
+                oldest = eps_series.iloc[-1]
+
+                if oldest > 0 and latest > 0:
+                    eps_cagr = calculate_cagr(eps_series)
+                    eps_cagr_score = score_metric(
+                        eps_cagr,
+                        10,
+                        5
+                    )
+                else:
+                    warnings.append("EPS CAGR not found")
             else:
                 warnings.append("EPS CAGR not found")
         else:
@@ -697,6 +738,7 @@ def analyze_stock(ticker):
         "Debt/Equity": debt_to_equity,
         "Free Cash Flow": free_cash_flow,
         "Revenue Growth": revenue_growth,
+        "Revenue Growth Source": revenue_growth_source,
 
         "Company Name": company_name,
         "Sector": sector,
@@ -706,6 +748,8 @@ def analyze_stock(ticker):
         "ROE Score": roe_score,
         "Operating Margin": operating_margin,
         "Operating Margin Score": operating_margin_score,
+        "EPS Growth": eps_growth,
+        "EPS Growth Source": eps_growth_source,
         "TTM EPS Growth": eps_growth,
         "EPS Growth Score": eps_growth_score,
         "Revenue Growth Score": revenue_growth_score,
