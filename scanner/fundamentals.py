@@ -15,7 +15,7 @@ def is_missing(value):
 
 def score_metric(value, high, medium):
     if is_missing(value):
-        return 0
+        return None
     if value > high:
         return 1.0
 
@@ -23,6 +23,164 @@ def score_metric(value, high, medium):
         return 0.5
 
     return 0
+
+
+def sum_scores(scores):
+    return sum(score for score in scores if score is not None)
+
+
+def score_coverage(scores):
+    return sum(score is not None for score in scores)
+
+
+def normalized_score(scores):
+    valid_scores = [score for score in scores if score is not None]
+    if not valid_scores:
+        return None
+    return sum(valid_scores) / len(valid_scores)
+
+
+def is_financial_company(sector, industry):
+    sector_name = (sector or "").lower()
+    industry_name = (industry or "").lower()
+    financial_keywords = (
+        "bank",
+        "insurance",
+        "mortgage",
+        "reit",
+        "real estate investment trust",
+    )
+    return (
+        "financial services" in sector_name
+        and any(keyword in industry_name for keyword in financial_keywords)
+    ) or (
+        "real estate" in sector_name
+        and any(keyword in industry_name for keyword in ("reit", "real estate investment trust"))
+    )
+
+
+def has_consecutive_quarters(series, count):
+    if len(series) < count:
+        return False
+
+    periods = [
+        date.tz_localize(None).to_period("Q")
+        if getattr(date, "tzinfo", None) is not None
+        else date.to_period("Q")
+        for date in series.index[:count]
+    ]
+    return all(
+        periods[index].ordinal - periods[index + 1].ordinal == 1
+        for index in range(count - 1)
+    )
+
+
+def calculate_ttm_growth(series, min_denominator=0.10):
+    if series is None:
+        return None
+
+    series = series.dropna().sort_index(ascending=False)
+    if not has_consecutive_quarters(series, 8):
+        return None
+
+    current_ttm = series.iloc[:4].sum()
+    prior_ttm = series.iloc[4:8].sum()
+
+    if prior_ttm <= min_denominator:
+        return None
+
+    return (current_ttm / prior_ttm - 1) * 100
+
+
+def calculate_ttm_eps_growth(quarterly_financials):
+    if quarterly_financials is None or quarterly_financials.empty:
+        return None
+
+    try:
+        for row in (
+            "Diluted EPS",
+            "Diluted EPS from Continuing Operations",
+        ):
+            if row in quarterly_financials.index:
+                eps = (
+                    quarterly_financials.loc[row]
+                    .dropna()
+                    .sort_index(ascending=False)
+                )
+                if has_consecutive_quarters(eps, 8):
+                    current_ttm = eps.iloc[:4].sum()
+                    prior_ttm = eps.iloc[4:8].sum()
+                    if prior_ttm > 0:
+                        return (current_ttm / prior_ttm - 1) * 100
+
+        net_income = None
+        for row in (
+            "Net Income Common Stockholders",
+            "Net Income",
+        ):
+            if row in quarterly_financials.index:
+                net_income = (
+                    quarterly_financials.loc[row]
+                    .dropna()
+                    .sort_index(ascending=False)
+                )
+                break
+
+        diluted_shares = None
+        for row in (
+            "Diluted Average Shares",
+            "Diluted Average Shares Outstanding",
+        ):
+            if row in quarterly_financials.index:
+                diluted_shares = (
+                    quarterly_financials.loc[row]
+                    .dropna()
+                    .sort_index(ascending=False)
+                )
+                break
+
+        if net_income is None or diluted_shares is None:
+            return None
+
+        common_dates = net_income.index.intersection(diluted_shares.index)
+        net_income = net_income.loc[common_dates].sort_index(ascending=False)
+        diluted_shares = diluted_shares.loc[common_dates].sort_index(ascending=False)
+
+        if not has_consecutive_quarters(net_income, 8):
+            return None
+        if not has_consecutive_quarters(diluted_shares, 8):
+            return None
+
+        quarterly_eps = net_income / diluted_shares
+        current_ttm = quarterly_eps.iloc[:4].sum()
+        prior_ttm = quarterly_eps.iloc[4:8].sum()
+        if prior_ttm > 0:
+            return (current_ttm / prior_ttm - 1) * 100
+    except (
+        AttributeError,
+        KeyError,
+        TypeError,
+        ValueError,
+        ZeroDivisionError,
+    ):
+        pass
+
+    return None
+
+
+def calculate_cagr(series):
+    series = series.dropna().sort_index(ascending=False)
+    if len(series) < 2:
+        return None
+
+    latest = series.iloc[0]
+    oldest = series.iloc[-1]
+    years = (series.index[0] - series.index[-1]).days / 365.25
+
+    if latest <= 0 or oldest <= 0 or years <= 0:
+        return None
+
+    return ((latest / oldest) ** (1 / years) - 1) * 100
 
 
 def upcoming_earnings_date(stock, info):
@@ -64,7 +222,9 @@ def upcoming_earnings_date(stock, info):
 def analyze_stock(ticker):
     warnings = []
     financials = None
+    quarterly_financials = None
     balance_sheet = None
+    quarterly_cashflow = None
     eps_cagr = None
     roic = None
 
@@ -93,6 +253,7 @@ def analyze_stock(ticker):
     price = info.get("currentPrice")
     pe = info.get("trailingPE")
     forward_pe = info.get("forwardPE")
+    price_to_book = info.get("priceToBook")
     eps_ttm = info.get("trailingEps")
 
     if (
@@ -113,8 +274,8 @@ def analyze_stock(ticker):
     market_cap = info.get("marketCap")
     debt_to_equity = info.get("debtToEquity")
     current_ratio = info.get("currentRatio")
-    free_cash_flow = info.get("freeCashflow")
-    revenue_growth = info.get("revenueGrowth")
+    free_cash_flow = None
+    revenue_growth = None
     company_name = (
         info.get("longName")
         or info.get("shortName")
@@ -125,7 +286,8 @@ def analyze_stock(ticker):
     description = info.get("longBusinessSummary")
     roe = info.get("returnOnEquity")
     operating_margin = info.get("operatingMargins")
-    eps_growth = info.get("earningsGrowth")
+    eps_growth = None
+
     earnings_date = upcoming_earnings_date(stock, info)
 
     if earnings_date:
@@ -181,15 +343,8 @@ def analyze_stock(ticker):
     if operating_margin is not None:
         operating_margin *= 100
 
-    if revenue_growth is not None:
-        revenue_growth *= 100
-
-    if eps_growth is not None:
-        eps_growth *= 100
-
-
     if is_missing(rsi):
-        rsi_score = 0
+        rsi_score = None
         warnings.append("RSI not found")
     elif 40 <= rsi <= 70:
         rsi_score = 1
@@ -216,26 +371,88 @@ def analyze_stock(ticker):
         10
     )
 
+    revenue_cagr = None
+    revenue_cagr_score = None
+    eps_cagr_score = None
+
+    try:
+        financials = stock.financials
+        quarterly_financials = stock.quarterly_financials
+        balance_sheet = stock.balance_sheet
+    except Exception as error:
+        warnings.append(f"Financial statements not found: {error}")
+
+    try:
+        quarterly_cashflow = stock.quarterly_cashflow
+    except Exception as error:
+        warnings.append(f"Quarterly cash flow statement not found: {error}")
+
+    if quarterly_cashflow is not None:
+        if not is_financial_company(sector, industry):
+            try:
+                operating_cash_flow = (
+                    quarterly_cashflow.loc["Operating Cash Flow"]
+                    .dropna()
+                    .sort_index(ascending=False)
+                )
+
+                capital_expenditure = (
+                    quarterly_cashflow.loc["Capital Expenditure"]
+                    .dropna()
+                    .sort_index(ascending=False)
+                )
+
+                if has_consecutive_quarters(operating_cash_flow, 4) and has_consecutive_quarters(capital_expenditure, 4):
+                    operating_cash_flow_ttm = operating_cash_flow.iloc[:4].sum()
+                    capital_expenditure_ttm = capital_expenditure.iloc[:4].sum()
+                    free_cash_flow = (
+                        operating_cash_flow_ttm
+                        - abs(capital_expenditure_ttm)
+                    )
+
+            except (IndexError, KeyError, TypeError, ValueError):
+                pass
+
+    try:
+        revenue_series = quarterly_financials.loc["Total Revenue"]
+        revenue_growth = calculate_ttm_growth(
+            revenue_series,
+            min_denominator=0.10,
+        )
+        if revenue_growth is None:
+            warnings.append("TTM Revenue Growth not meaningful or unavailable")
+    except (AttributeError, KeyError, TypeError, ValueError):
+        warnings.append("TTM Revenue Growth not meaningful or unavailable")
+
+    try:
+        eps_growth = calculate_ttm_eps_growth(quarterly_financials)
+
+        if eps_growth is None:
+            earnings_history = stock.get_earnings_dates(limit=16)
+            if "Reported EPS" in earnings_history.columns:
+                eps_growth = calculate_ttm_growth(
+                    earnings_history["Reported EPS"],
+                    min_denominator=0,
+                )
+
+        if eps_growth is None:
+            warnings.append("TTM EPS Growth not meaningful or unavailable")
+    except (AttributeError, KeyError, TypeError, ValueError, ZeroDivisionError):
+        warnings.append("TTM EPS Growth not meaningful or unavailable")
+
     revenue_growth_score = score_metric(
         revenue_growth,
         15,
         5
     )
 
-    revenue_cagr = None
-    revenue_cagr_score = 0
-    eps_cagr_score = 0
     eps_growth_score = score_metric(eps_growth, 15, 5)
 
-    try:
-        financials = stock.financials
-        balance_sheet = stock.balance_sheet
-    except Exception as error:
-        warnings.append(f"Financial statements not found: {error}")
-
-    roic_score = 0
+    roic_score = None
 
     if (
+        not is_financial_company(sector, industry)
+        and
         financials is not None
         and balance_sheet is not None
         and "Operating Income" in financials.index
@@ -266,6 +483,7 @@ def analyze_stock(ticker):
                 if pretax_income > 0
                 else 0.21
             )
+            tax_rate = min(max(tax_rate, 0), 0.35)
 
             nopat = operating_income * (1 - tax_rate)
             invested_capital = total_debt + equity - cash
@@ -286,9 +504,7 @@ def analyze_stock(ticker):
             years = len(revenue_series) - 1
 
             if oldest > 0 and latest > 0:
-                revenue_cagr = (
-                    (latest / oldest) ** (1 / years) - 1
-                ) * 100
+                revenue_cagr = calculate_cagr(revenue_series)
                 revenue_cagr_score = score_metric(
                     revenue_cagr,
                     10,
@@ -311,9 +527,7 @@ def analyze_stock(ticker):
             years = len(eps_series) - 1
 
             if oldest > 0 and latest > 0:
-                eps_cagr = (
-                    (latest / oldest) ** (1 / years) - 1
-                ) * 100
+                eps_cagr = calculate_cagr(eps_series)
                 eps_cagr_score = score_metric(
                     eps_cagr,
                     10,
@@ -327,14 +541,17 @@ def analyze_stock(ticker):
     except Exception as error:
         warnings.append(f"EPS CAGR not found: {error}")
 
-    growth_score = (
-        revenue_growth_score
-        + revenue_cagr_score
-        + eps_growth_score
-        + eps_cagr_score
-    )
+    growth_components = [
+        revenue_growth_score,
+        revenue_cagr_score,
+        eps_growth_score,
+        eps_cagr_score,
+    ]
+    growth_score = sum_scores(growth_components)
+    growth_coverage = score_coverage(growth_components)
+    growth_normalized = normalized_score(growth_components)
 
-    dma_score = 0
+    dma_score = None
 
     if (
         price is not None
@@ -343,7 +560,7 @@ def analyze_stock(ticker):
         dma_score = 1 if price > sma200 else 0
 
     if is_missing(pe):
-        pe_score = 0
+        pe_score = None
     elif pe < 20:
         pe_score = 1
     elif pe <= 30:
@@ -352,7 +569,7 @@ def analyze_stock(ticker):
         pe_score = 0
 
     if peg is None:
-        peg_score = 0
+        peg_score = None
     elif peg < 1.5:
         peg_score = 1
     elif peg <= 2:
@@ -360,17 +577,15 @@ def analyze_stock(ticker):
     else:
         peg_score = 0
 
-    quality_score = (
-        roe_score
-        + roic_score
-        + operating_margin_score
-    )
+    quality_components = [roe_score, roic_score, operating_margin_score]
+    quality_score = sum_scores(quality_components)
+    quality_coverage = score_coverage(quality_components)
+    quality_normalized = normalized_score(quality_components)
 
-    technical_score = (
-        dma_score
-        + rsi_score
-        + relative_strength_score
-    )
+    technical_components = [dma_score, rsi_score, relative_strength_score]
+    technical_score = sum_scores(technical_components)
+    technical_coverage = score_coverage(technical_components)
+    technical_normalized = normalized_score(technical_components)
 
     # Calculate FCF Yield
     fcf_yield = None
@@ -388,32 +603,70 @@ def analyze_stock(ticker):
         2
     )
 
-    valuation_score = (
-        pe_score
-        + peg_score
-        + fcf_score
+    valuation_components = [pe_score, peg_score]
+    if not is_financial_company(sector, industry):
+        valuation_components.append(fcf_score)
+    valuation_score = sum_scores(valuation_components)
+    valuation_coverage = score_coverage(valuation_components)
+    valuation_normalized = normalized_score(valuation_components)
+
+    weighted_categories = [
+        (quality_normalized, 0.30),
+        (growth_normalized, 0.30),
+        (valuation_normalized, 0.20),
+        (technical_normalized, 0.20),
+    ]
+    valid_categories = [
+        (score, weight)
+        for score, weight in weighted_categories
+        if score is not None
+    ]
+    weight_total = sum(weight for _, weight in valid_categories)
+    overall_normalized = (
+        sum(score * weight for score, weight in valid_categories) / weight_total
+        if weight_total
+        else None
+    )
+    total_score = overall_normalized * 13 if overall_normalized is not None else None
+    data_quality = sum(
+        coverage / components
+        for coverage, components in (
+            (quality_coverage, len(quality_components)),
+            (growth_coverage, len(growth_components)),
+            (valuation_coverage, len(valuation_components)),
+            (technical_coverage, len(technical_components)),
+        )
+    ) / 4
+    data_quality_status = (
+        "Insufficient Data"
+        if data_quality < 0.80
+        else "Sufficient Data"
     )
 
-    total_score = (
-        quality_score
-        + growth_score
-        + valuation_score
-        + technical_score
-    )
+    if revenue_growth is not None and revenue_growth > 50:
+        warnings.append(
+            "Revenue growth unusually high: verify acquisition or cyclical effects"
+        )
+
+    if eps_growth is not None and eps_growth > 100:
+        warnings.append(
+            "EPS growth unusually high: verify denominator and one-time items"
+        )
 
     fields = {
         "Price": price,
         "PE": pe,
         "Forward PE": forward_pe,
+        "Price/Book": price_to_book,
         "PEG": peg,
         "ROE": roe,
         "Operating Margin": operating_margin,
-        "Revenue Growth": revenue_growth,
         "Revenue CAGR": revenue_cagr,
-        "EPS Growth": eps_growth,
         "EPS CAGR": eps_cagr,
-        "Free Cash Flow": free_cash_flow,
     }
+
+    if not is_financial_company(sector, industry):
+        fields["Free Cash Flow"] = free_cash_flow
 
     for name, value in fields.items():
         if is_missing(value):
@@ -433,6 +686,7 @@ def analyze_stock(ticker):
         "Price": price,
         "PE": pe,
         "Forward PE": forward_pe,
+        "Price/Book": price_to_book,
         "PEG": peg,
         "ROIC": roic,
         "ROIC Score": roic_score,
@@ -452,23 +706,38 @@ def analyze_stock(ticker):
         "ROE Score": roe_score,
         "Operating Margin": operating_margin,
         "Operating Margin Score": operating_margin_score,
-        "EPS Growth": eps_growth,
+        "TTM EPS Growth": eps_growth,
         "EPS Growth Score": eps_growth_score,
         "Revenue Growth Score": revenue_growth_score,
         "Revenue CAGR": revenue_cagr,
         "Revenue CAGR Score": revenue_cagr_score,
 
         "Quality Score": quality_score,
+        "Quality Coverage": quality_coverage,
+        "Quality Normalized": quality_normalized,
         "Growth Score": growth_score,
+        "Growth Coverage": growth_coverage,
+        "Growth Normalized": growth_normalized,
+        "Quality Components": len(quality_components),
+        "Growth Components": len(growth_components),
 
         "Total Score": total_score,
+        "Overall Normalized": overall_normalized,
+        "Data Quality": data_quality,
+        "Data Quality Status": data_quality_status,
         "PE Score": pe_score,
         "PEG Score": peg_score,
         "Valuation Score": valuation_score,
+        "Valuation Coverage": valuation_coverage,
+        "Valuation Normalized": valuation_normalized,
+        "Valuation Components": len(valuation_components),
 
         "200 DMA": sma200,
         "200 DMA Score": dma_score,
         "Technical Score": technical_score,
+        "Technical Coverage": technical_coverage,
+        "Technical Normalized": technical_normalized,
+        "Technical Components": len(technical_components),
         "Earnings Date": earnings_date,
 
         "EPS CAGR": eps_cagr,

@@ -2,6 +2,8 @@ from scanner.fundamentals import analyze_stock
 
 
 def status(score):
+    if score is None:
+        return "—"
     if score >= 1:
         return "✅"
     if score >= 0.5:
@@ -28,7 +30,7 @@ stocks = [
     "F",
     "AMD",
     "DVN",
-    "PFE",
+    "LHX",
     "C",
 ]
 
@@ -81,26 +83,6 @@ for ticker in stocks:
 Sector: {result['Sector'] or 'N/A'}
 Industry: {result['Industry'] or 'N/A'}
 
-SUMMARY
-----------------------------------------
-Quality Score: {result['Quality Score']:.1f}
-Growth Score: {result['Growth Score']:.1f}
-Valuation Score: {result['Valuation Score']:.1f}
-Technical Score: {result['Technical Score']:.1f}
-
-TOTAL SCORE: {result['Total Score']:.1f} / 13.0
-
-NEXT EARNINGS
-----------------------------------------
-{result['Earnings Date'] or 'N/A'}
-
-VERDICT
-----------------------------------------
-{'✅ High Quality' if result['Quality Score'] >= 1.5 else '⚠️ Below Target Quality'}
-{'✅ Strong Growth' if result['Growth Score'] >= 2 else ''}
-{'✅ Attractive Valuation' if result['Valuation Score'] >= 2 else '⚠️ Expensive'}
-{'✅ Positive Trend' if result['Technical Score'] >= 1 else '❌ Below 200 Day Moving Average'}
-
 COMPANY PROFILE
 ----------------------------------------
 {result['Description'][:300] + '...' if result['Description'] else 'N/A'}
@@ -111,16 +93,16 @@ ROE {status(result['ROE Score'])} {percent(result['ROE'])}
 {roic_line}Operating Margin {status(result['Operating Margin Score'])} {percent(result['Operating Margin'])}
 Debt/Equity {percent(result['Debt/Equity'])}
 
-Quality Score: {result['Quality Score']:.1f}
+Quality Score: {number(result['Quality Score'], 1)} (normalized {number(result['Quality Normalized'], 2)}, {result['Quality Coverage']}/{result['Quality Components']} available)
 
 GROWTH
 ----------------------------------------
 Revenue Growth {status(result['Revenue Growth Score'])} {percent(result['Revenue Growth'])}
 Revenue CAGR {status(result['Revenue CAGR Score'])} {percent(result['Revenue CAGR'])}
-EPS Growth {status(result['EPS Growth Score'])} {percent(result['EPS Growth'])}
-EPS CAGR {status(result['EPS CAGR Score'])} {percent(result['EPS CAGR'])}
+TTM EPS Growth {status(result['EPS Growth Score'])} {percent(result['TTM EPS Growth'])}
+Historical EPS CAGR {status(result['EPS CAGR Score'])} {percent(result['EPS CAGR'])}
 
-Growth Score: {result['Growth Score']:.1f}
+Growth Score: {number(result['Growth Score'], 1)} (normalized {number(result['Growth Normalized'], 2)}, {result['Growth Coverage']}/{result['Growth Components']} available)
 
 VALUATION
 ----------------------------------------
@@ -128,9 +110,10 @@ Price {price}
 PE Ratio {status(result['PE Score'])} {number(result['PE'], 1)}
 Forward PE {number(result['Forward PE'], 1)}
 PEG Ratio {status(result['PEG Score'])} {number(result['PEG'], 2)}
+P/B Ratio {number(result['Price/Book'], 2)}
 FCF Yield {status(result['FCF Score'])} {fcf_yield}
 
-Valuation Score: {result['Valuation Score']:.1f}
+Valuation Score: {number(result['Valuation Score'], 1)} (normalized {number(result['Valuation Normalized'], 2)}, {result['Valuation Coverage']}/{result['Valuation Components']} available)
 
 TECHNICALS
 ----------------------------------------
@@ -139,16 +122,18 @@ Above 200 DMA {'✅' if result['200 DMA Score'] else '❌'}
 RSI {status(result['RSI Score'])} {number(result['RSI'], 1)}
 Relative Strength {status(result['Relative Strength Score'])} {percent(result['Relative Strength'])}
 
-Technical Score: {result['Technical Score']:.1f}
+Technical Score: {number(result['Technical Score'], 1)} (normalized {number(result['Technical Normalized'], 2)}, {result['Technical Coverage']}/{result['Technical Components']} available)
 
 SUMMARY
 ----------------------------------------
-Quality Score: {result['Quality Score']:.1f}
-Growth Score: {result['Growth Score']:.1f}
-Valuation Score: {result['Valuation Score']:.1f}
-Technical Score: {result['Technical Score']:.1f}
+Quality Score: {number(result['Quality Score'], 1)} (normalized {number(result['Quality Normalized'], 2)}, {result['Quality Coverage']}/{result['Quality Components']} available)
+Growth Score: {number(result['Growth Score'], 1)} (normalized {number(result['Growth Normalized'], 2)}, {result['Growth Coverage']}/{result['Growth Components']} available)
+Valuation Score: {number(result['Valuation Score'], 1)} (normalized {number(result['Valuation Normalized'], 2)}, {result['Valuation Coverage']}/{result['Valuation Components']} available)
+Technical Score: {number(result['Technical Score'], 1)} (normalized {number(result['Technical Normalized'], 2)}, {result['Technical Coverage']}/{result['Technical Components']} available)
 
-TOTAL SCORE: {result['Total Score']:.1f} / 13.0
+TOTAL SCORE: {number(result['Total Score'], 1)} / 13.0
+DATA QUALITY: {percent(result['Data Quality'] * 100)}
+DATA STATUS: {result['Data Quality Status']}
 
 NEXT EARNINGS
 ----------------------------------------
@@ -156,10 +141,10 @@ NEXT EARNINGS
 
 VERDICT
 ----------------------------------------
-{'✅ High Quality' if result['Quality Score'] >= 2 else '⚠️ Below Target Quality'}
-{'✅ Strong Growth' if result['Growth Score'] >= 2.5 else ''}
-{'✅ Attractive Valuation' if result['Valuation Score'] >= 2 else '⚠️ Expensive'}
-{'✅ Positive Trend' if result['Technical Score'] >= 1 else '❌ Below 200 Day Moving Average'}
+{'✅ High Quality' if result['Quality Score'] is not None and result['Quality Score'] >= 2 else '⚠️ Below Target Quality'}
+{'✅ Strong Growth' if result['Growth Score'] is not None and result['Growth Score'] >= 2.5 else ''}
+{'✅ Attractive Valuation' if result['Valuation Score'] is not None and result['Valuation Score'] >= 2 else '⚠️ Expensive'}
+{'✅ Positive Trend' if result['Technical Score'] is not None and result['Technical Score'] >= 1 else '❌ Below 200 Day Moving Average'}
 """
         )
 
