@@ -1,3 +1,7 @@
+streamlit
 yfinance
 lxml
+python-dotenv
 python-telegram-bot
+pandas
+numpy
