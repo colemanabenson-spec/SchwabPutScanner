@@ -162,4 +162,5 @@ ticker = st.text_input(
 
 if st.button("Analyze"):
     result = analyze_stock(ticker.upper())
+    st.write(result)
     st.text(build_report(result))
