@@ -148,6 +148,11 @@ def build_report(result):
     ).strip()
 
 
+@st.cache_data(ttl=3600)
+def get_stock_data(ticker):
+    return analyze_stock(ticker)
+
+
 st.set_page_config(
     page_title="CAB Stock Scanner",
     page_icon="📈"
@@ -161,6 +166,6 @@ ticker = st.text_input(
 )
 
 if st.button("Analyze"):
-    result = analyze_stock(ticker.upper())
+    result = get_stock_data(ticker.upper())
     st.write(result)
     st.text(build_report(result))

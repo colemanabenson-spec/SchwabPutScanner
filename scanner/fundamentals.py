@@ -1,7 +1,24 @@
 import math
+import time
 from datetime import datetime, timezone
 import yfinance as yf
 import pandas as pd
+
+
+def retry_yahoo_request(fetch, is_valid=None, attempts=3, delay=1):
+    result = None
+    for attempt in range(attempts):
+        try:
+            result = fetch()
+            if is_valid is None or is_valid(result) or attempt == attempts - 1:
+                return result
+        except Exception:
+            if attempt == attempts - 1:
+                raise
+
+        time.sleep(delay)
+
+    return result
 
 
 def is_missing(value):
@@ -129,6 +146,23 @@ def find_eps_row(frame):
     return None
 
 
+def statement_series(frame, *row_names):
+    if frame is None or frame.empty:
+        return pd.Series(dtype=float)
+
+    for row_name in row_names:
+        if row_name in frame.index:
+            values = pd.to_numeric(frame.loc[row_name], errors="coerce").dropna()
+            return values.sort_index(ascending=False)
+
+    return pd.Series(dtype=float)
+
+
+def latest_statement_value(frame, *row_names):
+    values = statement_series(frame, *row_names)
+    return values.iloc[0] if not values.empty else None
+
+
 def normalize_eps_series(series):
     try:
         s = pd.to_numeric(series, errors="coerce").dropna()
@@ -231,7 +265,10 @@ def upcoming_earnings_date(stock, info):
 
     if not candidates or candidates[0] < now:
         try:
-            earnings_dates = stock.get_earnings_dates(limit=12)
+            earnings_dates = retry_yahoo_request(
+                lambda: stock.get_earnings_dates(limit=12),
+                is_valid=lambda dates: dates is not None and not dates.empty,
+            )
             for earnings_date in earnings_dates.index:
                 if hasattr(earnings_date, "to_pydatetime"):
                     earnings_date = earnings_date.to_pydatetime()
@@ -261,17 +298,64 @@ def analyze_stock(ticker):
     stock = yf.Ticker(ticker)
 
     info = {}
+    fast_info = {}
     hist = None
 
     try:
-        info = stock.info or {}
+        fast_info = retry_yahoo_request(
+            lambda: stock.fast_info or {},
+            is_valid=lambda data: bool(data),
+        )
+    except Exception as error:
+        warnings.append(f"Fast company data not found: {error}")
+
+    try:
+        info = retry_yahoo_request(
+            lambda: stock.info or {},
+            is_valid=lambda data: bool(data.get("longName")),
+        )
     except Exception as error:
         warnings.append(f"Company data not found: {error}")
 
     try:
-        hist = stock.history(period="1y")
+        hist = retry_yahoo_request(
+            lambda: stock.history(period="1y"),
+            is_valid=lambda data: data is not None and not data.empty,
+        )
     except Exception as error:
         warnings.append(f"Price history not found: {error}")
+
+    try:
+        financials = retry_yahoo_request(
+            lambda: stock.income_stmt,
+            is_valid=lambda data: data is not None and not data.empty,
+        )
+    except Exception as error:
+        warnings.append(f"Annual financial statements not found: {error}")
+
+    try:
+        quarterly_financials = retry_yahoo_request(
+            lambda: stock.quarterly_income_stmt,
+            is_valid=lambda data: data is not None and not data.empty,
+        )
+    except Exception as error:
+        warnings.append(f"Quarterly financial statements not found: {error}")
+
+    try:
+        balance_sheet = retry_yahoo_request(
+            lambda: stock.balance_sheet,
+            is_valid=lambda data: data is not None and not data.empty,
+        )
+    except Exception as error:
+        warnings.append(f"Balance sheet not found: {error}")
+
+    try:
+        quarterly_cashflow = retry_yahoo_request(
+            lambda: stock.quarterly_cashflow,
+            is_valid=lambda data: data is not None and not data.empty,
+        )
+    except Exception as error:
+        warnings.append(f"Quarterly cash flow statement not found: {error}")
 
     sma200 = None
 
@@ -280,30 +364,93 @@ def analyze_stock(ticker):
     else:
         warnings.append("200-day moving average not found")
 
-    price = info.get("currentPrice")
+    try:
+        price = retry_yahoo_request(
+            lambda: fast_info.get("lastPrice"),
+            is_valid=lambda value: not is_missing(value),
+        )
+    except Exception as error:
+        price = None
+        warnings.append(f"Fast price not found: {error}")
+
+    if is_missing(price) and hist is not None and not hist.empty:
+        price = hist["Close"].iloc[-1]
+
+    try:
+        market_cap = retry_yahoo_request(
+            lambda: fast_info.get("marketCap"),
+            is_valid=lambda value: not is_missing(value),
+        )
+    except Exception as error:
+        market_cap = None
+        warnings.append(f"Fast market capitalization not found: {error}")
+
+    if is_missing(market_cap):
+        market_cap = info.get("marketCap")
+
+    eps_row = find_eps_row(quarterly_financials)
+    eps_ttm = None
+    if eps_row is not None:
+        eps_series = normalize_eps_series(quarterly_financials.loc[eps_row])
+        if len(eps_series) >= 4 and has_consecutive_quarters(eps_series, 4):
+            eps_ttm = eps_series.iloc[:4].sum()
+
     pe = info.get("trailingPE")
+    if not is_missing(price) and not is_missing(eps_ttm) and eps_ttm > 0:
+        pe = price / eps_ttm
+
     forward_pe = info.get("forwardPE")
-    price_to_book = info.get("priceToBook")
-    eps_ttm = info.get("trailingEps")
-
-    if (
-        not is_missing(price)
-        and not is_missing(eps_ttm)
-        and eps_ttm > 0
-    ):
-        calculated_pe = price / eps_ttm
-
-        if (
-            is_missing(pe)
-            or pe > calculated_pe * 2
-            or pe < calculated_pe / 2
-        ):
-            pe = calculated_pe
-
     peg = info.get("pegRatio")
-    market_cap = info.get("marketCap")
+    equity_series = statement_series(
+        balance_sheet,
+        "Stockholders Equity",
+        "Total Stockholder Equity",
+        "Total Equity Gross Minority Interest",
+    )
+    equity = equity_series.iloc[0] if not equity_series.empty else None
+    average_equity = (
+        equity_series.iloc[:2].mean()
+        if len(equity_series) >= 2
+        else equity
+    )
+    net_income = latest_statement_value(
+        financials,
+        "Net Income Common Stockholders",
+        "Net Income",
+    )
+    total_debt = latest_statement_value(balance_sheet, "Total Debt")
+    current_assets = latest_statement_value(balance_sheet, "Current Assets")
+    current_liabilities = latest_statement_value(
+        balance_sheet,
+        "Current Liabilities",
+    )
+    total_revenue = latest_statement_value(financials, "Total Revenue")
+    operating_income = latest_statement_value(financials, "Operating Income")
+
     debt_to_equity = info.get("debtToEquity")
+    if (
+        not is_missing(total_debt)
+        and not is_missing(equity)
+        and equity != 0
+    ):
+        debt_to_equity = total_debt / equity * 100
+
     current_ratio = info.get("currentRatio")
+    if (
+        not is_missing(current_assets)
+        and not is_missing(current_liabilities)
+        and current_liabilities != 0
+    ):
+        current_ratio = current_assets / current_liabilities
+
+    price_to_book = info.get("priceToBook")
+    if (
+        not is_missing(market_cap)
+        and not is_missing(equity)
+        and equity > 0
+    ):
+        price_to_book = market_cap / equity
+
     free_cash_flow = None
     revenue_growth = None
     company_name = (
@@ -315,7 +462,25 @@ def analyze_stock(ticker):
     industry = info.get("industry")
     description = info.get("longBusinessSummary")
     roe = info.get("returnOnEquity")
+    if (
+        not is_missing(net_income)
+        and not is_missing(average_equity)
+        and average_equity != 0
+    ):
+        roe = net_income / average_equity * 100
+    elif not is_missing(roe):
+        roe *= 100
+
     operating_margin = info.get("operatingMargins")
+    if (
+        not is_missing(operating_income)
+        and not is_missing(total_revenue)
+        and total_revenue != 0
+    ):
+        operating_margin = operating_income / total_revenue * 100
+    elif not is_missing(operating_margin):
+        operating_margin *= 100
+
     eps_growth = None
     revenue_growth_source = None
 
@@ -347,7 +512,10 @@ def analyze_stock(ticker):
             warnings.append(f"RSI not found: {error}")
 
     try:
-        spy_hist = yf.Ticker("SPY").history(period="1y")
+        spy_hist = retry_yahoo_request(
+            lambda: yf.Ticker("SPY").history(period="1y"),
+            is_valid=lambda data: data is not None and not data.empty,
+        )
 
         if (
             hist is not None
@@ -367,12 +535,6 @@ def analyze_stock(ticker):
 
     except Exception as error:
         warnings.append(f"Relative strength not found: {error}")
-
-    if roe is not None:
-        roe *= 100
-
-    if operating_margin is not None:
-        operating_margin *= 100
 
     if is_missing(rsi):
         rsi_score = None
@@ -405,18 +567,6 @@ def analyze_stock(ticker):
     revenue_cagr = None
     revenue_cagr_score = None
     eps_cagr_score = None
-
-    try:
-        financials = stock.income_stmt
-        quarterly_financials = stock.quarterly_income_stmt
-        balance_sheet = stock.balance_sheet
-    except Exception as error:
-        warnings.append(f"Financial statements not found: {error}")
-
-    try:
-        quarterly_cashflow = stock.quarterly_cashflow
-    except Exception as error:
-        warnings.append(f"Quarterly cash flow statement not found: {error}")
 
     if quarterly_cashflow is not None:
         if not is_financial_company(sector, industry):
